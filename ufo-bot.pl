@@ -4,10 +4,8 @@
 # usage:
 #    	$ ./ufo-bot irc.server.net 6667 #channel
 #
-###############################################################
 # Master Commands:
-# raw		+
-#
+#    <prefix>(raw|join|part|notice|ctcp|quit|nick)
 #
 # 
 # Client commands:
@@ -48,6 +46,7 @@ $ufo_nick,
 $ufo_ident, 
 $ufo_name, 
 $ufo_prefix, 
+$ufo_quitmsg,
 $buf_size,
 $rss_enabled,
 );
@@ -59,7 +58,6 @@ my (
 
 # "$debug = 1" will print irc server buffer to the console
 my $debug = 1;	
-
 
 # random quote from "quote.cfg"
 ###srand; my $quote;
@@ -87,6 +85,7 @@ sub read_init() {
 		if ($line =~ m/^ufo_ident=(.+)/) { $ufo_ident = $1; }
 		if ($line =~ m/^ufo_name=(.+)/) { $ufo_name = $1; }
 		if ($line =~ m/^ufo_prefix=(.+)/) { $ufo_prefix = $1; }
+		if ($line =~ m/^ufo_quitmsg=(.+)/) { $ufo_quitmsg = $1; }
 		if ($line =~ m/^buf_size=(\d+)/) { $buf_size = $1; }
 		if ($line =~ m/^rss_enabled=(.+)/) { $rss_enabled = $1; }
 		if ($line =~ m/^channels=(.+)/) { @irc_channels = split(/,/, $1); }
@@ -165,7 +164,7 @@ while($socket->sysread(my $buf, $buf_size)) {
        	last;
 }
 
-# join channels
+# autojoin
 while($socket->sysread(my $buf, $buf_size)) {
         if ($buf =~ m/^PING (:[^ ]+)$/i) { $socket->syswrite("PONG :$1\r\n" ) ;}
 	if ($buf =~ m/(376|422)/i) { 
@@ -185,32 +184,27 @@ while($socket->sysread(my $buf, $buf_size)) {
 
 	if ($debug == 1) { print $buf . "\n";}
 
-	#### master ####
-	#RAW
-	if ($buf =~ m/^:$master_nick!$master_ident@(.+)\ PRIVMSG\ (.+)\ :${ufo_prefix}raw\ (.+)/) 
+	#### master
+	###### server commands
+	if ($buf =~ m/^:$master_nick!$master_ident@(.+)\ PRIVMSG\ (.+)\ :${ufo_prefix}(raw|join|part|notice|privmsg|ctcp|quit|nick)\ (.+)/) 
 	{
-	                $socket->syswrite("$3\r\n");
+		if    ($3 eq 'raw'	) { $socket->syswrite("$4\r\n");}
+		elsif ($3 eq 'join'	) { $socket->syswrite("JOIN $4\r\n");}
+		elsif ($3 eq 'part'	) { $socket->syswrite("PART $4\r\n");}
+		elsif ($3 eq 'notice'	) { $socket->syswrite("NOTICE $4\r\n");}
+		elsif ($3 eq 'privmsg'	) { $socket->syswrite("PRIVMSG $4\r\n");}
+		#elsif ($3 eq 'ctcp'	) { ##goto sub here##   $socket->syswrite(" $3\r\n");}
+		elsif ($3 eq 'quit'	) { $socket->syswrite("QUIT $4\r\n");}
+		elsif ($3 eq 'nick'	) { $socket->syswrite("NICK $4\r\n");}
+		
         }
-	#JOIN
-	if ($buf =~ m/^:$master_nick!$master_ident@(.+)\ PRIVMSG\ (.+)\ :${ufo_prefix}join\ (.+)/) 
-	{
-	                $socket->syswrite("JOIN $3\r\n");
+
+	if ($buf =~ m/^:(.+)!(.+)@(.+)\ PRIVMSG\ (.+)\ :\001VERSION\001/) {
+                $socket->syswrite("PRIVMSG $1 \001VERSION $ufo_version\001\r\n");
+
         }
-	#PART
-	if ($buf =~ m/^:$master_nick!$master_ident@(.+)\ PRIVMSG\ (.+)\ :${ufo_prefix}part\ (.+)/) 
-	{
-	                $socket->syswrite("PART $3\r\n");
-        }
-	#NOTICE
-	if ($buf =~ m/^:$master_nick!$master_ident@(.+)\ PRIVMSG\ (.+)\ :${ufo_prefix}notice\ (.+)/) 
-	{
-	                $socket->syswrite("NOTICE $3\r\n");
-        }
-	#MSG
-	if ($buf =~ m/^:$master_nick!$master_ident@(.+)\ PRIVMSG\ (.+)\ :${ufo_prefix}msg\ (.+)/) 
-	{
-	                $socket->syswrite("PRIVMSG $3\r\n");
-        }
+
+	###### user commands
 	#RSS FORCE UPDATE
 	if ($buf =~ m/^:$master_nick!$master_ident@(.+)\ PRIVMSG\ (.+)\ :${ufo_prefix}rss update/) 
 	{
@@ -231,7 +225,7 @@ while($socket->sysread(my $buf, $buf_size)) {
 
 
 
-	#### client ####
+	#### client
 	#help
 	if ($buf =~ m/^:(.+)!(.+)@(.+)\ PRIVMSG\ (.+)\ :${ufo_prefix}help/) 
 	{

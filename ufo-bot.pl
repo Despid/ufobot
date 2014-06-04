@@ -2,10 +2,10 @@
 
 ###############################################################
 # usage:
-#    	$ ./ufo-bot irc.server.net 6667 #channel
+#    	$ ./ufo-bot.pl
 #
 # Master Commands:
-#    <prefix>(raw|join|part|notice|ctcp|quit|nick)
+#    <prefix>(raw|join|part|notice|msg|ctcp|quit|nick)
 #
 # 
 # Client commands:
@@ -23,10 +23,10 @@
 
 use strict;
 use warnings;
-
 use POSIX;
 use threads;
 use IO::Socket::INET;
+use IO::Socket::Socks;
 use XML::Simple;
 use LWP::Simple qw($ua getstore get);
 
@@ -37,10 +37,12 @@ $socket,
 $socks_proxy_enable, 
 $socks_addr, 
 $socks_port, 
+$socks_timeout,
 $master_nick, 
 $master_ident, 
 $irc_addr, 
 $irc_port, 
+$irc_timeout,
 $ufo_version, 
 $ufo_nick, 
 $ufo_ident, 
@@ -75,9 +77,11 @@ sub read_init() {
 		if ($debug == 1) { print $line };
 		if ($line =~ m/^irc_addr=(.+)/) { $irc_addr = $1; }
 		if ($line =~ m/^irc_port=(\d+)/) { $irc_port = $1; }
+		if ($line =~ m/^irc_timeout=(\d+)/) { $irc_timeout = $1; }
 		if ($line =~ m/^socks_proxy_enable=(.+)/) { $socks_proxy_enable = $1; }
 		if ($line =~ m/^socks_addr=(.+)/) { $socks_addr = $1; }
 		if ($line =~ m/^socks_port=(.+)/) { $socks_port = $1; }
+		if ($line =~ m/^socks_timeout=(\d+)/) { $socks_timeout = $1; }
 		if ($line =~ m/^master_nick=(.+)/) { $master_nick = $1; }
 		if ($line =~ m/^master_ident=(.+)/) { $master_ident = $1; }
 		if ($line =~ m/^ufo_version=(.+)/) { $ufo_version = $1; }
@@ -88,7 +92,7 @@ sub read_init() {
 		if ($line =~ m/^ufo_quitmsg=(.+)/) { $ufo_quitmsg = $1; }
 		if ($line =~ m/^buf_size=(\d+)/) { $buf_size = $1; }
 		if ($line =~ m/^rss_enabled=(.+)/) { $rss_enabled = $1; }
-		if ($line =~ m/^channels=(.+)/) { @irc_channels = split(/,/, $1); }
+		if ($line =~ m/^irc_channels=(.+)/) { @irc_channels = split(/,/, $1); }
 		if ($line =~ m/^rss_feeds=(.+)/) { @rss_feeds = split(/@@@@/, $1); }
 
 	}
@@ -103,12 +107,18 @@ if ($socks_proxy_enable eq "no") {
 			PeerAddr => $irc_addr,
 	        	PeerPort => $irc_port,
 			Proto    => 'tcp',
-			Timeout => 5,
+			Timeout => $irc_timeout,
 	) or die "[-] $!";
 } elsif ($socks_proxy_enable eq "yes") {
-	##socks4code
-	## $socket = new IO::Socket:Socks......
-	##
+	$socket = new IO::Socket::Socks(
+        	        ProxyAddr=>$socks_addr,
+	                ProxyPort=>$socks_port,
+	                ConnectAddr=>$irc_addr,
+	                ConnectPort=>$irc_port,
+	                SocksDebug=>0,
+	                Timeout => $socks_timeout,
+	                SocksVersion => 4,
+	) or die "[-] $SOCKS_ERROR";
 }
 
 
@@ -168,6 +178,7 @@ while($socket->sysread(my $buf, $buf_size)) {
 while($socket->sysread(my $buf, $buf_size)) {
         if ($buf =~ m/^PING (:[^ ]+)$/i) { $socket->syswrite("PONG :$1\r\n" ) ;}
 	if ($buf =~ m/(376|422)/i) { 
+		#$socket->syswrite("\r\n");
 		foreach	my $channel (@irc_channels) {
 			$socket->syswrite("JOIN $channel\r\n"); 
 		}
@@ -186,13 +197,13 @@ while($socket->sysread(my $buf, $buf_size)) {
 
 	#### master
 	###### server commands
-	if ($buf =~ m/^:$master_nick!$master_ident@(.+)\ PRIVMSG\ (.+)\ :${ufo_prefix}(raw|join|part|notice|privmsg|ctcp|quit|nick)\ (.+)/) 
+	if ($buf =~ m/^:$master_nick!$master_ident@(.+)\ PRIVMSG\ (.+)\ :${ufo_prefix}(raw|join|part|notice|msg|ctcp|quit|nick)\ (.+)/) 
 	{
 		if    ($3 eq 'raw'	) { $socket->syswrite("$4\r\n");}
 		elsif ($3 eq 'join'	) { $socket->syswrite("JOIN $4\r\n");}
 		elsif ($3 eq 'part'	) { $socket->syswrite("PART $4\r\n");}
 		elsif ($3 eq 'notice'	) { $socket->syswrite("NOTICE $4\r\n");}
-		elsif ($3 eq 'privmsg'	) { $socket->syswrite("PRIVMSG $4\r\n");}
+		elsif ($3 eq 'msg'	) { $socket->syswrite("PRIVMSG $4\r\n");}
 		#elsif ($3 eq 'ctcp'	) { ##goto sub here##   $socket->syswrite(" $3\r\n");}
 		elsif ($3 eq 'quit'	) { $socket->syswrite("QUIT $4\r\n");}
 		elsif ($3 eq 'nick'	) { $socket->syswrite("NICK $4\r\n");}
@@ -216,11 +227,6 @@ while($socket->sysread(my $buf, $buf_size)) {
 	                $socket->syswrite("PRIVMSG $2 Error: rss_enabled set to \"no\" in (init.cfg)\r\n");
 		}
 
-        }
-	#QUIT
-	if ($buf =~ m/^:$master_nick!$master_ident@(.+)\ PRIVMSG\ (.+)\ :${ufo_prefix}quit\ (.+)/) 
-	{
-	                $socket->syswrite("QUIT $3\r\n");
         }
 
 

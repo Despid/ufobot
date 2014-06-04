@@ -2,7 +2,7 @@
 
 ###############################################################
 # usage:
-#    	$ ./ufo-bot.pl
+#    	$ ./ufo-bot.pl [/path/to/init.cfg]
 #
 # Master Commands:
 #    <prefix>(raw|join|part|notice|msg|ctcp|quit|nick)
@@ -59,20 +59,16 @@ my (
 ) = ();
 
 # "$debug = 1" will print irc server buffer to the console
-my $debug = 1;	
+my ($initfile, $debug) = ("init.cfg", 1);	
 
-# random quote from "quote.cfg"
-###srand; my $quote;
-#open FILE, "<quote.cfg" or die "[-] Could not open filename: $!\n";
-##rand($.)<1 and ($quote=$_) while <FILE>;
-#close FILE;
-#$quote =~ s/[\r\n]+//g;
 
+
+if (!@ARGV < 1) {$initfile =$ARGV[0];}
 &read_init();
 
 #read init.cfg
 sub read_init() {
-	open FILE, "<init.cfg" or die "[-] Could not open filename: $!\n";
+	open FILE, "<$initfile" or die "[-] Could not open filename: $!\n";
 	foreach my $line (<FILE>) {
 		if ($debug == 1) { print $line };
 		if ($line =~ m/^irc_addr=(.+)/) { $irc_addr = $1; }
@@ -322,3 +318,9 @@ while($socket->sysread(my $buf, $buf_size)) {
 print "DISCONNECT->$ufo_nick [$irc_addr:$irc_port]\n";
 
 
+# random quote from "quote.cfg"
+###srand; my $quote;
+#open FILE, "<quote.cfg" or die "[-] Could not open filename: $!\n";
+##rand($.)<1 and ($quote=$_) while <FILE>;
+#close FILE;
+#$quote =~ s/[\r\n]+//g;
